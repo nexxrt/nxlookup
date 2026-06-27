@@ -622,7 +622,7 @@ def main():
             print()
             sys.exit(0)
         if arg in ("--version", "-v"):
-            print("nxlookup v1.1.1")
+            print("nxlookup v1.1.4")
             sys.exit(0)
         # Single-shot mode: one lookup then exit
         if not lookup(arg):

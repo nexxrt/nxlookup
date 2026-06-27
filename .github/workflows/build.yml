@@ -21,15 +21,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Build EXE
+      - name: Build EXE (no UPX, with version metadata)
         run: |
-          pyinstaller --onefile --name nxlookup nxlookup.py
+          pyinstaller --onefile --noupx --name nxlookup --version-file version_info.txt nxlookup.py
 
-      - name: Upload artifact
+      - name: Create ZIP archive (alternative — fewer AV false positives)
+        run: |
+          Compress-Archive -Path dist/nxlookup.exe -DestinationPath dist/nxlookup.zip
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nxlookup-windows
-          path: dist/nxlookup.exe
+          path: |
+            dist/nxlookup.exe
+            dist/nxlookup.zip
 
   release:
     needs: build
@@ -44,5 +50,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: nxlookup.exe
+          files: |
+            nxlookup.exe
+            nxlookup.zip
           generate_release_notes: true

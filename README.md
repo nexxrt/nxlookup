@@ -229,6 +229,7 @@ The EXE includes `dnspython` (DNS resolution) and a built-in WHOIS client (direc
 - Some registries (.it, .de) return limited WHOIS data due to GDPR. DNS and IP analysis still work.
 - To update: re-run the curl install command — it overwrites the script.
 - For the `.exe` version: download the latest release from GitHub.
+- **Windows Defender false positive:** PyInstaller-packed `.exe` files may trigger antivirus warnings. This is a known false positive — the tool is open source and safe. If you get a warning, use `nxlookup.zip` from the releases page instead, or add an exclusion for the file.
 
 ## License
 
