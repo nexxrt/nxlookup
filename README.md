@@ -4,6 +4,8 @@ Domain and IP investigation tool — WHOIS, DNS records, IP/ASN info in one comm
 
 > 🖥 **[nxlookup-ui](https://github.com/nexxrt/nxlookup-ui)** — desktop GUI version (Flask + pywebview)
 
+![screenshot](screenshots/nxlookup-cli.png)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://python.org)
 
