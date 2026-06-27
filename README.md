@@ -1,105 +1,31 @@
 # nxlookup
 
-> Ultimate Domain & IP Investigation Tool  
-> Полная разведка по домену или IP за одну команду
+Domain and IP investigation tool — WHOIS, DNS records, IP/ASN info in one command.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://python.org)
 
----
+Runs on Linux, macOS, WSL. No pip dependencies — only needs `dig` and `whois` installed.
 
-`nxlookup` собирает **всю информацию** по домену или IP-адресу: whois, DNS-записи всех типов, данные о провайдере/ASN для каждого IP из A/AAAA-записей, PTR, abuse-контакты. Всё в одном цветном отчёте.
+## Features
 
-**90+ доменных зон** (ru, рф, com, net, org, it, de, fr, uk, cn, io, me, tv и десятки других).  
-**IDN-домены** (объясняем.рф, 百度.cn).  
-**URL на входе** (https://..., www., путь — отрезается автоматически).
+- WHOIS with registrar, dates, statuses, nameservers (resolves NS hostnames to IPs)
+- DNS records: A, AAAA, MX, NS, TXT, SOA, CNAME
+- Per-IP analysis: PTR, ASN/provider, IP range, country, abuse contact
+- IDN domains (объясняем.рф, 百度.cn) — auto punycode conversion
+- URL input: `https://www.example.com/path` → strips to `example.com`
+- IP mode: WHOIS + reverse DNS for direct IP lookups
+- 90+ TLDs supported (ru, рф, com, net, org, it, de, fr, uk, cn, io, me, tv, ...)
 
----
+## Install
 
-## Что умеет
-
-```
-┌─ WHOIS ─────────────────────────────────────────┐
-│ Registrar, даты, статусы, DNS-серверы            │
-│ + авто-резолв IP каждого NS                      │
-├─ DNS ───────────────────────────────────────────┤
-│ A, AAAA, MX, NS, TXT, SOA, CNAME                 │
-├─ IP ANALYSIS ───────────────────────────────────┤
-│ PTR, провайдер/ASN, диапазон, страна, abuse      │
-├─ QUICK SUMMARY ─────────────────────────────────┤
-│ Сводка в 6 строк                                 │
-└─────────────────────────────────────────────────┘
-```
-
----
-
-## Установка
-
-### Способ 1: одной командой (Linux / macOS / WSL)
+### One-liner (Linux / macOS / WSL)
 
 ```bash
 sudo curl -sSL https://raw.githubusercontent.com/nexxrt/nxlookup/main/nxlookup.py -o /usr/local/bin/nxlookup && sudo chmod +x /usr/local/bin/nxlookup
 ```
 
-Всё. После этого команда `nxlookup` доступна из любого места.
-
----
-
-### Способ 2: Windows через WSL (для новичков)
-
-Если у вас Windows и вы никогда не пользовались WSL — вот пошаговая инструкция с нуля.
-
-#### Шаг 1. Установка WSL
-
-Откройте **PowerShell от имени администратора** (ПКМ по Пуск → PowerShell (Администратор)) и выполните:
-
-```powershell
-wsl --install
-```
-
-Компьютер перезагрузится. После перезагрузки откроется окно Ubuntu — создайте имя пользователя и пароль (запомните пароль, он понадобится для `sudo`).
-
-Если WSL уже был установлен, просто откройте **Ubuntu** из меню Пуск.
-
-#### Шаг 2. Установка зависимостей
-
-В открытом терминале Ubuntu выполните:
-
-```bash
-sudo apt update
-sudo apt install -y dnsutils whois python3
-```
-
-Это установит `dig`, `whois` и Python (обычно уже есть).
-
-> **Примечание для Arch/WSL:** `sudo pacman -S bind whois python`
-
-#### Шаг 3. Установка nxlookup
-
-```bash
-sudo curl -sSL https://raw.githubusercontent.com/nexxrt/nxlookup/main/nxlookup.py -o /usr/local/bin/nxlookup
-sudo chmod +x /usr/local/bin/nxlookup
-```
-
-#### Шаг 4. Проверка
-
-```bash
-nxlookup --version
-```
-
-Должно вывести: `nxlookup v1.0.0 — Ultimate Domain/IP Investigation Tool`
-
-#### Шаг 5. Первый запуск
-
-```bash
-nxlookup yandex.ru
-```
-
-Готово! Вы увидите полную сводку по домену.
-
----
-
-### Способ 3: ручная установка из репозитория
+### From source
 
 ```bash
 git clone https://github.com/nexxrt/nxlookup.git
@@ -108,70 +34,71 @@ sudo cp nxlookup.py /usr/local/bin/nxlookup
 sudo chmod +x /usr/local/bin/nxlookup
 ```
 
----
+### WSL (Windows) — step by step
 
-### Зависимости
+If you're on Windows and new to WSL:
 
-Обязательно должны быть установлены:
+**1. Install WSL.** Open PowerShell as Administrator and run:
 
-| Пакет | Debian/Ubuntu | Arch | macOS (brew) | RHEL/Fedora |
-|-------|--------------|------|-------------|-------------|
-| `dig` | `sudo apt install dnsutils` | `sudo pacman -S bind` | `brew install bind` | `sudo dnf install bind-utils` |
-| `whois` | `sudo apt install whois` | `sudo pacman -S whois` | `brew install whois` | `sudo dnf install whois` |
-| Python 3 | уже есть | уже есть | уже есть | уже есть |
-
-**Никаких pip-зависимостей** — только стандартная библиотека Python.
-
----
-
-## Использование
-
-### Домен
-
-```bash
-nxlookup yandex.ru
-nxlookup github.com
-nxlookup example.org
+```powershell
+wsl --install
 ```
 
-### IP-адрес
+Restart when prompted. After reboot, a Ubuntu terminal will open — create a username and password.
+
+**2. Install dependencies.** In the Ubuntu terminal:
 
 ```bash
-nxlookup 8.8.8.8
-nxlookup 1.1.1.1
+sudo apt update
+sudo apt install -y dnsutils whois
 ```
 
-### IDN-домен (кириллица, иероглифы)
+**3. Install nxlookup:**
 
 ```bash
-nxlookup объясняем.рф
-nxlookup президент.рф
+sudo curl -sSL https://raw.githubusercontent.com/nexxrt/nxlookup/main/nxlookup.py -o /usr/local/bin/nxlookup
+sudo chmod +x /usr/local/bin/nxlookup
 ```
 
-### URL на входе (протокол и путь отрезаются автоматически)
+**4. Verify:**
 
 ```bash
-nxlookup https://www.example.com/path/to/page
-nxlookup http://github.com/nousresearch/hermes-agent
-```
-
-### Интерактивный режим
-
-```bash
-nxlookup
-# Введите домен или IP, когда спросит
-```
-
-### Справка
-
-```bash
-nxlookup --help
 nxlookup --version
 ```
 
----
+### Dependencies
 
-## Пример вывода
+| Tool | Debian/Ubuntu | Arch | macOS | Fedora |
+|------|--------------|------|-------|--------|
+| dig | `apt install dnsutils` | `pacman -S bind` | `brew install bind` | `dnf install bind-utils` |
+| whois | `apt install whois` | `pacman -S whois` | `brew install whois` | `dnf install whois` |
+
+Python 3.8+ is required (included by default on all major distros).
+
+## Usage
+
+```bash
+# Domain
+nxlookup yandex.ru
+nxlookup github.com
+
+# IP address
+nxlookup 8.8.8.8
+
+# IDN domain
+nxlookup объясняем.рф
+
+# URL (protocol and path are stripped)
+nxlookup https://www.example.com/some/path
+
+# Interactive (asks for target)
+nxlookup
+
+# Help
+nxlookup --help
+```
+
+## Example output
 
 ```
 $ nxlookup github.com
@@ -194,7 +121,7 @@ $ nxlookup github.com
     [1] DNS1.P08.NSONE.NET  →  198.51.44.8
     [2] DNS2.P08.NSONE.NET  →  198.51.45.8
     [3] NS-421.AWSDNS-52.COM  →  205.251.193.165
-    ... и ещё 5 серверов
+    ... 5 more
 
 ━━━ 2. DNS RESOURCE RECORDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ▸ A Records (1)
@@ -202,10 +129,9 @@ $ nxlookup github.com
   ▸ MX Records (1)
     0 github-com.mail.protection.outlook.com
   ▸ NS Records (8)
-    dns1.p08.nsone.net
-    dns2.p08.nsone.net
-    ns-421.awsdns-52.com
-    ... и ещё 5 серверов
+    dns1.p08.nsone.net, dns2.p08.nsone.net, ns-421.awsdns-52.com, ...
+  ▸ SOA Record
+    dns1.p08.nsone.net. hostmaster.nsone.net. 1656468023 ...
 
 ━━━ 3. IP ADDRESS ANALYSIS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ▸ 140.82.121.4
@@ -225,64 +151,28 @@ $ nxlookup github.com
   MX Records:  1
 ```
 
----
+## Supported TLDs
 
-## Поддерживаемые доменные зоны
+The tool uses the system `whois` with an extended config covering 90+ zones:
 
-`nxlookup` использует системный `whois` с расширенным конфигом (`/etc/whois.conf`), покрывающим **90+ зон**:
-
-| Регион | Зоны |
+| Region | TLDs |
 |--------|------|
-| Россия/СНГ | .ru, .рф, .su, .kz, .by, .uz, .kg, .tj, .tm, .az, .ge, .am, .md, .ua |
-| Европа | .eu, .it, .de, .fr, .nl, .be, .ch, .at, .es, .pt, .pl, .se, .no, .dk, .fi, .ie, .cz, .sk, .hu, .lt, .lv, .ee, .lu, .is, .gr |
-| UK | .uk, .co.uk, .org.uk, .me.uk |
-| Азия | .cn, .jp, .kr, .in, .sg, .au, .nz, .hk, .tw, .ph, .my |
-| gTLD | .com, .net, .org, .info, .biz, .pro (RDAP), .name, .mobi, .xxx, .tel, .aero, .asia, .cat |
-| New gTLD | .xyz, .top, .club, .online, .site, .shop, .blog, .app, .dev, .cloud, .tech, .digital, .email, .guru, .link, .live, .media, .rocks, .solutions, .space, .today, .website, .world, .zone |
-| Островные | .io, .me, .tv, .cc, .ws, .tk |
-| Америка | .ca, .br, .mx, .us, .co, .pe, .cl, .ar |
+| Russia/CIS | ru, рф, su, kz, by, uz, kg, tj, tm, az, ge, am, md, ua |
+| Europe | eu, it, de, fr, nl, be, ch, at, es, pt, pl, se, no, dk, fi, ie, cz, sk, hu, lt, lv, ee, lu, is, gr |
+| UK | uk, co.uk, org.uk, me.uk |
+| Asia-Pacific | cn, jp, kr, in, sg, au, nz, hk, tw, ph, my |
+| gTLD | com, net, org, info, biz, name, mobi, xxx, tel, aero, asia, cat |
+| New gTLD | xyz, top, club, online, site, shop, blog, app, dev, cloud, tech, digital, email, guru, link, live, media, rocks, solutions, space, today, website, world, zone |
+| Island/ccTLD | io, me, tv, cc, ws, tk |
+| Americas | ca, br, mx, us, co, pe, cl, ar |
 
-> ⚠️ `.pro` — RDAP-only (whois по порту 43 отключён), запрос через HTTPS.
+`.pro` uses RDAP (port 43 whois is disabled) — queried over HTTPS.
 
----
+## Notes
 
-## Частые вопросы
+- Some registries (.it, .de) return limited WHOIS data due to GDPR. DNS and IP analysis still work.
+- To update: re-run the curl install command — it overwrites the script.
 
-**Q: «Почему whois пустой для некоторых доменов?»**  
-Некоторые зоны (.it, .de) ограничивают whois-выдачу из-за GDPR. DNS-записи и IP-анализ при этом работают полностью.
+## License
 
-**Q: «Можно ли без sudo?»**  
-Да, скопируйте скрипт в любую директорию из `$PATH` (например, `~/.local/bin/`) и дайте права на исполнение.
-
-**Q: «Не работает на macOS?»**  
-Установите `dig` и `whois` через Homebrew: `brew install bind whois`
-
-**Q: «Как обновить nxlookup?»**  
-Повторите команду установки (curl …) — она перезапишет скрипт новой версией.
-
----
-
-## Дорожная карта
-
-- [x] WHOIS-парсер для 90+ зон
-- [x] Все типы DNS-записей (A, AAAA, MX, NS, TXT, SOA, CNAME)
-- [x] IP/ASN-анализ с PTR и abuse-контактами
-- [x] IDN-домены (кириллица, иероглифы)
-- [x] Очистка URL на входе (https://, www., путь)
-- [x] Интерактивный режим
-- [ ] Windows .exe (PyInstaller)
-- [ ] Экспорт в JSON
-- [ ] Проверка SSL-сертификата
-- [ ] Геолокация IP
-
----
-
-## Автор
-
-**nexx** — [github.com/nexxrt](https://github.com/nexxrt)
-
----
-
-## Лицензия
-
-MIT — делайте что хотите. [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE).
