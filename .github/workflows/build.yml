@@ -23,7 +23,7 @@ jobs:
 
       - name: Build EXE (no UPX, with version metadata)
         run: |
-          pyinstaller --onefile --noupx --name nxlookup --version-file version_info.txt nxlookup.py
+          pyinstaller --onefile --noupx --name nxlookup --icon nxlookup.ico --version-file version_info.txt nxlookup.py
 
       - name: Create ZIP archive (alternative — fewer AV false positives)
         run: |
