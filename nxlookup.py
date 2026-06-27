@@ -114,7 +114,7 @@ def ssl_check(domain: str) -> dict:
         if na:
             import datetime
             end = datetime.datetime.strptime(na, "%b %d %H:%M:%S %Y %Z")
-            result["days"] = (end - datetime.datetime.utcnow()).days
+            result["days"] = (end.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).days
         return result
     except Exception as e:
         result["error"] = str(e)
