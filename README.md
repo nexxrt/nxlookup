@@ -5,7 +5,10 @@ Domain and IP investigation tool — WHOIS, DNS records, IP/ASN info in one comm
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://python.org)
 
-Runs on Linux, macOS, WSL. No pip dependencies — only needs `dig` and `whois` installed.
+Runs on Linux, macOS, Windows, WSL. Two modes:
+
+- **Pure Python:** `pip install dnspython python-whois` — zero system dependencies
+- **System tools:** uses `dig` and `whois` if available (no pip install needed)
 
 ## Features
 
@@ -168,10 +171,46 @@ The tool uses the system `whois` with an extended config covering 90+ zones:
 
 `.pro` uses RDAP (port 43 whois is disabled) — queried over HTTPS.
 
+## Building a standalone Windows EXE
+
+The script can be compiled into a single `.exe` that runs on Windows without Python installed.
+
+### Requirements
+
+- Windows with Python 3.8+
+- Git (optional — you can download the script manually)
+
+### Steps
+
+```powershell
+# 1. Clone or download
+git clone https://github.com/nexxrt/nxlookup.git
+cd nxlookup
+
+# 2. Create virtual environment
+python -m venv .venv
+.venv\Scripts\activate
+
+# 3. Install dependencies + PyInstaller
+pip install -r requirements.txt pyinstaller
+
+# 4. Build
+pyinstaller --onefile --name nxlookup nxlookup.py
+```
+
+The compiled `.exe` will be in `dist\nxlookup.exe` (roughly 8–12 MB).
+
+Pre-built releases are available on the [Releases](https://github.com/nexxrt/nxlookup/releases) page — built automatically via GitHub Actions on every version tag.
+
+### What's bundled
+
+The EXE includes `dnspython` (DNS resolution) and a built-in WHOIS client (direct socket connections to registry servers). No `dig`, `whois`, or other system tools needed.
+
 ## Notes
 
 - Some registries (.it, .de) return limited WHOIS data due to GDPR. DNS and IP analysis still work.
 - To update: re-run the curl install command — it overwrites the script.
+- For the `.exe` version: download the latest release from GitHub.
 
 ## License
 

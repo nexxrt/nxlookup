@@ -1,45 +1,69 @@
 #!/usr/bin/env python3
 """
-nxlookup — Ultimate Domain/IP Investigation Tool
-Linux/macOS/WSL version.
-Requires: dig (bind), whois
+nxlookup — Domain/IP Investigation Tool
+Cross-platform: Linux, macOS, Windows, WSL.
+Pure Python mode: pip install dnspython python-whois
+Fallback mode: requires dig + whois on PATH.
 Usage: nxlookup <domain|ip>   or   nxlookup (interactive)
 """
 
-import subprocess
 import sys
 import re
 import ipaddress
-import shutil
+import socket
 import os
-from typing import Optional
 
-# ── Colors ─────────────────────────────────────────────────────────────
+# ── Optional pure-Python deps ──────────────────────────────────────────
+try:
+    import dns.resolver
+    HAS_DNSPYTHON = True
+except ImportError:
+    HAS_DNSPYTHON = False
+
+try:
+    import whois as pywhois
+    HAS_PYWHOIS = True
+except ImportError:
+    HAS_PYWHOIS = False
+
+# We still need subprocess/shutil for fallback mode
+import subprocess
+import shutil
+
+HAS_DIG = shutil.which("dig") is not None
+HAS_WHOIS = shutil.which("whois") is not None
+
+# ── Colors (ANSI; use colorama on Windows if available) ────────────────
+try:
+    import colorama
+    colorama.init()
+except ImportError:
+    pass
+
 C = {
-    "reset":   "\033[0m",
-    "bold":    "\033[1m",
-    "dim":     "\033[2m",
-    "red":     "\033[31m",
-    "green":   "\033[32m",
-    "yellow":  "\033[33m",
-    "blue":    "\033[34m",
-    "magenta": "\033[35m",
-    "cyan":    "\033[36m",
+    "reset":   "\033[0m",  "bold": "\033[1m",  "dim":  "\033[2m",
+    "red":     "\033[31m", "green": "\033[32m", "yellow": "\033[33m",
+    "blue":    "\033[34m", "magenta": "\033[35m", "cyan": "\033[36m",
     "white":   "\033[37m",
-    "R":        "\033[0m",   # alias
 }
 
 def c(color: str, text: str) -> str:
+    if os.name == "nt" and "colorama" not in sys.modules:
+        return text  # no ANSI on Windows without colorama
     return f"{C.get(color, '')}{text}{C['reset']}"
 
-# ── Helpers ────────────────────────────────────────────────────────────
+
+# ── Banner ─────────────────────────────────────────────────────────────
 
 def banner():
     return f"""
 {c('cyan', '╔══════════════════════════════════════════════════╗')}
-{c('cyan', '║')}  {c('bold', 'nxlookup')} — {c('green', 'Ultimate Domain/IP Investigation')}          {c('cyan', '║')}
+{c('cyan', '║')}  {c('bold', 'nxlookup')} — {c('green', 'Domain / IP Investigation')}                {c('cyan', '║')}
 {c('cyan', '╚══════════════════════════════════════════════════╝')}
 """
+
+
+# ── Helpers ────────────────────────────────────────────────────────────
 
 def section(title: str):
     print(f"\n{c('yellow', '━━━')} {c('bold', title)} {c('yellow', '━' * (60 - len(title)))}")
@@ -51,21 +75,12 @@ def kv(key: str, value: str, highlight: bool = False):
     val = c('green', value) if highlight else value
     print(f"  {c('dim', key + ':') :<24s} {val}")
 
-def kv_list(key: str, values: list, highlight: bool = False):
+def kv_list(key: str, values: list):
     if not values:
         return
-    val = c('green', values[0]) if highlight else values[0]
-    print(f"  {c('dim', key + ':') :<24s} {val}")
+    print(f"  {c('dim', key + ':') :<24s} {values[0]}")
     for v in values[1:]:
         print(f"  {'':24s} {v}")
-
-def run(cmd: list, timeout: int = 20) -> str:
-    """Run command and return stdout, or '' on failure."""
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        return r.stdout.strip()
-    except Exception:
-        return ""
 
 def is_ip(target: str) -> bool:
     try:
@@ -75,22 +90,133 @@ def is_ip(target: str) -> bool:
         return False
 
 def is_domain(target: str) -> bool:
-    # rough check: has at least one dot, no spaces, no path chars
     if is_ip(target):
         return False
     return bool(re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]*\.)+[a-zA-Z0-9\-]{2,}$', target))
 
-# ── WHOIS parsing ──────────────────────────────────────────────────────
 
-def parse_whois(raw: str) -> dict:
-    """Extract structured fields from whois output."""
+# ── DNS (pure Python via dnspython, fallback to dig) ───────────────────
+
+def _dns_resolve(domain: str, rtype: str) -> list[str]:
+    """Resolve DNS records using dnspython."""
+    if not HAS_DNSPYTHON:
+        return _dns_dig(domain, rtype)
+    try:
+        answers = dns.resolver.resolve(domain, rtype)
+        return [str(r).rstrip('.') for r in answers]
+    except Exception:
+        return []
+
+def _dns_dig(domain: str, rtype: str) -> list[str]:
+    """Fallback: resolve DNS using dig command."""
+    try:
+        out = subprocess.run(["dig", "+short", domain, rtype],
+                           capture_output=True, text=True, timeout=15)
+        return [l.strip().rstrip('.') for l in out.stdout.splitlines() if l.strip()]
+    except Exception:
+        return []
+
+def dns_query(domain: str, rtype: str) -> list[str]:
+    return _dns_resolve(domain, rtype)
+
+def dns_all(domain: str) -> dict:
+    types = ["A", "AAAA", "MX", "NS", "TXT", "SOA", "CNAME"]
+    return {t: dns_query(domain, t) for t in types}
+
+def ptr_lookup(ip: str) -> str:
+    """Reverse DNS."""
+    if HAS_DNSPYTHON:
+        try:
+            addr = dns.reversename.from_address(ip)
+            answers = dns.resolver.resolve(addr, "PTR")
+            return str(answers[0]).rstrip('.')
+        except Exception:
+            return ""
+    try:
+        out = subprocess.run(["dig", "+short", "-x", ip],
+                           capture_output=True, text=True, timeout=10)
+        return out.stdout.strip().rstrip('.')
+    except Exception:
+        return ""
+
+
+# ── WHOIS ──────────────────────────────────────────────────────────────
+
+def _whois_query(target: str) -> str:
+    """WHOIS lookup — pure Python or fallback to CLI."""
+    if HAS_PYWHOIS:
+        try:
+            w = pywhois.whois(target)
+            return w.text if hasattr(w, 'text') and w.text else ""
+        except Exception:
+            pass
+    if HAS_WHOIS:
+        try:
+            r = subprocess.run(["whois", "-H", target],
+                             capture_output=True, text=True, timeout=20)
+            return r.stdout
+        except Exception:
+            pass
+    return ""
+
+def _ip_whois_raw(ip: str) -> str:
+    """Raw WHOIS for an IP address using direct socket connection."""
+    # Step 1: find RIR from IANA
+    try:
+        s = socket.create_connection(("whois.iana.org", 43), timeout=10)
+        s.sendall((ip + "\r\n").encode())
+        resp = b""
+        while True:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            resp += chunk
+        s.close()
+        text = resp.decode("utf-8", errors="replace")
+        # Extract referral server
+        m = re.search(r'(?i)^refer:\s*(\S+)', text, re.MULTILINE)
+        if not m:
+            m = re.search(r'(?i)^whois:\s*(\S+)', text, re.MULTILINE)
+        if m:
+            server = m.group(1)
+            # Step 2: query the RIR
+            s2 = socket.create_connection((server, 43), timeout=10)
+            s2.sendall((ip + "\r\n").encode())
+            resp2 = b""
+            while True:
+                chunk = s2.recv(4096)
+                if not chunk:
+                    break
+                resp2 += chunk
+            s2.close()
+            return resp2.decode("utf-8", errors="replace")
+        return text
+    except Exception:
+        return ""
+
+def _domain_whois_raw(domain: str) -> str:
+    """WHOIS for a domain — pure Python when available."""
+    return _whois_query(domain)
+
+def ip_whois_raw(ip: str) -> str:
+    """WHOIS for an IP."""
+    # Try pure Python socket approach first
+    raw = _ip_whois_raw(ip)
+    if raw:
+        return raw
+    # Fall back to whois CLI
+    return _whois_query(ip)
+
+
+# ── Parsing ────────────────────────────────────────────────────────────
+
+def parse_domain_whois(raw: str) -> dict:
     data = {
         "domain": "", "registrar": "", "whois_server": "", "status": [],
         "nameservers": [], "created": "", "expires": "", "updated": "",
-        "registrant": "", "org": "", "country": "", "raw_short": raw[:2000],
+        "registrant": "", "org": "", "country": "",
     }
 
-    # Common patterns across registries (some have leading whitespace)
     patterns = [
         (r'(?i)^\s*Domain Name:\s*(.+)', 'domain'),
         (r'(?i)^\s*domain:\s*(.+)', 'domain'),
@@ -110,27 +236,23 @@ def parse_whois(raw: str) -> dict:
         (r'(?i)^\s*Registrant Country:\s*(.+)', 'country'),
     ]
 
-    for pattern, key in patterns:
-        if key is None:
-            continue
-        m = re.search(pattern, raw, re.MULTILINE)
+    for pat, key in patterns:
+        m = re.search(pat, raw, re.MULTILINE)
         if m and not data[key]:
             data[key] = m.group(1).strip()
 
-    # Nameservers: multiple formats (allow leading whitespace)
+    # Nameservers
     ns_patterns = [
         r'(?i)^\s*Name Server:\s*(.+)',
         r'(?i)^\s*nserver:\s*(.+)',
         r'(?i)^\s*Nserver:\s*(.+)',
     ]
-    seen_ns = set()
+    seen = set()
     for p in ns_patterns:
         for m in re.finditer(p, raw, re.MULTILINE):
-            ns = m.group(1).strip()
-            # Some servers include IP — split off
-            ns_clean = ns.split()[0].rstrip('.')
-            if ns_clean and ns_clean not in seen_ns:
-                seen_ns.add(ns_clean)
+            ns = m.group(1).split()[0].rstrip('.')
+            if ns and ns not in seen:
+                seen.add(ns)
                 data["nameservers"].append(ns)
 
     # Status
@@ -143,10 +265,9 @@ def parse_whois(raw: str) -> dict:
 
 
 def parse_ip_whois(raw: str) -> dict:
-    """Extract fields from IP whois (ARIN/RIPE/APNIC)."""
     data = {
         "inetnum": "", "netname": "", "org": "", "country": "",
-        "descr": "", "role": "", "abuse": "", "raw_short": raw[:2000],
+        "descr": "", "role": "", "abuse": "",
     }
     patterns = [
         (r'(?i)^\s*inetnum:\s*(.+)', 'inetnum'),
@@ -169,37 +290,9 @@ def parse_ip_whois(raw: str) -> dict:
     return data
 
 
-# ── DNS queries ────────────────────────────────────────────────────────
-
-def dig(domain: str, rtype: str) -> list[str]:
-    """Return dig +short results as list."""
-    out = run(["dig", "+short", domain, rtype], timeout=15)
-    if not out:
-        return []
-    return [line.strip().rstrip('.') for line in out.splitlines() if line.strip()]
-
-def dig_all(domain: str) -> dict:
-    """Query all relevant record types."""
-    types = ["A", "AAAA", "MX", "NS", "TXT", "SOA", "CNAME"]
-    result = {}
-    for t in types:
-        result[t] = dig(domain, t)
-    # Deduplicate NS (already in whois, but also useful here)
-    return result
-
-def ptr_lookup(ip: str) -> str:
-    """Reverse DNS lookup."""
-    out = run(["dig", "+short", "-x", ip], timeout=10)
-    return out.rstrip('.') if out else ""
-
-def ip_whois(ip: str) -> str:
-    """WHOIS on an IP address."""
-    return run(["whois", "-H", ip], timeout=20)
-
 # ── Display ────────────────────────────────────────────────────────────
 
 def display_domain(target: str, display_target: str = ""):
-    """Full domain investigation."""
     if not display_target:
         display_target = target
     print(banner())
@@ -208,10 +301,10 @@ def display_domain(target: str, display_target: str = ""):
         print(f"  {c('dim', 'Punycode:')} {c('dim', target)}")
     print()
 
-    # ── 1. WHOIS ──
+    # 1. WHOIS
     section("1. WHOIS DATA")
-    raw_whois = run(["whois", "-H", target], timeout=20)
-    w = parse_whois(raw_whois)
+    raw = _domain_whois_raw(target)
+    w = parse_domain_whois(raw)
 
     if w["domain"]:
         kv("Domain", w["domain"])
@@ -234,92 +327,76 @@ def display_domain(target: str, display_target: str = ""):
     if w["status"]:
         kv_list("Status", w["status"])
 
-    # Nameservers (from WHOIS — most reliable)
     if w["nameservers"]:
         sub_section("DNS Servers (from WHOIS)")
-        for i, ns in enumerate(w["nameservers"], 1):
-            # Resolve NS hostname to IP
-            ns_ip = dig(ns, "A")
+        for i, ns in enumerate(w["nameservers"][:12], 1):
+            ns_ip = dns_query(ns, "A")
             ip_str = f"  →  {', '.join(ns_ip)}" if ns_ip else ""
             print(f"    {c('dim', f'[{i}]')} {c('green', ns)}{c('cyan', ip_str)}")
     else:
-        print(f"  {c('red', '(no nameservers found in WHOIS)')}")
+        print(f"  {c('red', '(no nameservers in WHOIS)')}")
 
-    # ── 2. DNS Resource Records ──
+    # 2. DNS
     section("2. DNS RESOURCE RECORDS")
-    dns = dig_all(target)
+    dns = dns_all(target)
 
-    # A records
     sub_section(f"A Records ({c('green', str(len(dns['A'])))})")
-    if dns["A"]:
-        for ip in dns["A"]:
-            print(f"    {c('green', ip)}")
-    else:
-        print(f"    {c('red', '(none)')}")
-
-    # AAAA records
-    sub_section(f"AAAA Records ({c('green', str(len(dns['AAAA'])))})")
-    if dns["AAAA"]:
-        for ip in dns["AAAA"]:
-            print(f"    {c('green', ip)}")
-    else:
+    for ip in dns["A"]:
+        print(f"    {c('green', ip)}")
+    if not dns["A"]:
         print(f"    {c('dim', '(none)')}")
 
-    # CNAME
+    sub_section(f"AAAA Records ({c('green', str(len(dns['AAAA'])))})")
+    for ip in dns["AAAA"]:
+        print(f"    {c('green', ip)}")
+    if not dns["AAAA"]:
+        print(f"    {c('dim', '(none)')}")
+
     if dns["CNAME"]:
         sub_section("CNAME")
         for cname in dns["CNAME"]:
             print(f"    {c('green', cname)}")
 
-    # MX
     sub_section(f"MX Records ({c('green', str(len(dns['MX'])))})")
-    if dns["MX"]:
-        for mx in dns["MX"]:
-            print(f"    {c('green', mx)}")
-    else:
+    for mx in dns["MX"]:
+        print(f"    {c('green', mx)}")
+    if not dns["MX"]:
         print(f"    {c('dim', '(none)')}")
 
-    # NS (from DNS)
     sub_section(f"NS Records ({c('green', str(len(dns['NS'])))})")
-    if dns["NS"]:
-        for ns in dns["NS"]:
-            print(f"    {c('green', ns)}")
-    else:
+    for ns in dns["NS"]:
+        print(f"    {c('green', ns)}")
+    if not dns["NS"]:
         print(f"    {c('dim', '(none)')}")
 
-    # SOA
     if dns["SOA"]:
         sub_section("SOA Record")
         for soa in dns["SOA"]:
             print(f"    {c('green', soa)}")
 
-    # TXT (abbreviated)
     if dns["TXT"]:
         sub_section(f"TXT Records ({c('green', str(len(dns['TXT'])))})")
         for txt in dns["TXT"][:6]:
-            # Truncate long TXT records
             display = txt if len(txt) < 120 else txt[:117] + "..."
             print(f"    {c('dim', display)}")
         if len(dns["TXT"]) > 6:
             remaining = len(dns["TXT"]) - 6
             print(f"    {c('dim', f'... and {remaining} more')}")
 
-    # ── 3. IP Analysis ──
+    # 3. IP Analysis
     section("3. IP ADDRESS ANALYSIS")
     all_ips = dns["A"] + dns["AAAA"]
     if not all_ips:
-        print(f"  {c('red', 'No A/AAAA records to analyze.')}")
+        print(f"  {c('red', 'No A/AAAA records.')}")
     else:
-        for i, ip in enumerate(all_ips[:10], 1):  # max 10 IPs
+        for i, ip in enumerate(all_ips[:10], 1):
             sub_section(f"{ip}")
-            # Reverse DNS
             ptr = ptr_lookup(ip)
             if ptr and ptr != ip:
                 print(f"    {c('dim', 'PTR:') :<24s} {c('green', ptr)}")
 
-            # IP WHOIS (abbreviated)
-            raw_ip_whois = ip_whois(ip)
-            ipw = parse_ip_whois(raw_ip_whois)
+            raw_ip = ip_whois_raw(ip)
+            ipw = parse_ip_whois(raw_ip)
             if ipw["org"]:
                 print(f"    {c('dim', 'Organization:') :<24s} {c('yellow', ipw['org'])}")
             if ipw["netname"]:
@@ -333,13 +410,14 @@ def display_domain(target: str, display_target: str = ""):
             if ipw["abuse"]:
                 print(f"    {c('dim', 'Abuse Contact:') :<24s} {ipw['abuse']}")
 
-    # ── 4. Quick Summary ──
+    # 4. Summary
     section("4. QUICK SUMMARY")
     print(f"  {c('bold', 'Domain:')}       {c('green', display_target)}")
     print(f"  {c('bold', 'Registrar:')}    {c('yellow', w.get('registrar', 'N/A'))}")
     print(f"  {c('bold', 'Expires:')}      {c('yellow', w.get('expires', 'N/A'))}")
     print(f"  {c('bold', 'Nameservers:')}  {c('green', str(len(w['nameservers'])))} found")
-    print(f"  {c('bold', 'A Records:')}    {c('green', str(len(dns['A'])))} — {', '.join(dns['A'][:5])}{'...' if len(dns['A']) > 5 else ''}")
+    a_list = ', '.join(dns['A'][:5])
+    print(f"  {c('bold', 'A Records:')}    {c('green', str(len(dns['A'])))} — {a_list}{'...' if len(dns['A']) > 5 else ''}")
     if dns["AAAA"]:
         print(f"  {c('bold', 'AAAA Recs:')}   {c('green', str(len(dns['AAAA'])))}")
     if dns["MX"]:
@@ -348,23 +426,22 @@ def display_domain(target: str, display_target: str = ""):
 
 
 def display_ip(target: str):
-    """Full IP investigation."""
     print(banner())
-    print(f"  {c('bold', 'Target:')} {c('green', target)} {c('dim', '(IP address)')}")
+    print(f"  {c('bold', 'Target:')} {c('green', target)} {c('dim', '(IP)')}")
     print()
 
-    # ── 1. Reverse DNS ──
+    # Reverse DNS
     section("1. REVERSE DNS")
     ptr = ptr_lookup(target)
     if ptr and ptr != target:
         print(f"  {c('dim', 'PTR:') :<24s} {c('green', ptr)}")
     else:
-        print(f"  {c('red', 'No PTR record found.')}")
+        print(f"  {c('red', 'No PTR record.')}")
 
-    # ── 2. IP WHOIS ──
+    # IP WHOIS
     section("2. IP WHOIS / PROVIDER INFO")
-    raw_ip_whois = ip_whois(target)
-    ipw = parse_ip_whois(raw_ip_whois)
+    raw = ip_whois_raw(target)
+    ipw = parse_ip_whois(raw)
 
     if ipw["inetnum"]:
         kv("IP Range", ipw["inetnum"])
@@ -381,12 +458,10 @@ def display_ip(target: str):
     if ipw["abuse"]:
         kv("Abuse Contact", ipw["abuse"], highlight=True)
 
-    # Show a raw snippet if fields are sparse
     if not any([ipw["org"], ipw["netname"], ipw["inetnum"]]):
         print(f"\n  {c('dim', 'Raw WHOIS snippet:')}")
-        for line in raw_ip_whois.splitlines()[:15]:
+        for line in raw.splitlines()[:15]:
             print(f"    {c('dim', line)}")
-
     print()
 
 
@@ -394,8 +469,6 @@ def display_ip(target: str):
 
 def main():
     target = None
-
-    # Parse arguments
     if len(sys.argv) > 1:
         arg = sys.argv[1].strip()
         if arg in ("--help", "-h"):
@@ -405,15 +478,14 @@ def main():
             print(f"    nxlookup {c('green', 'yandex.ru')}")
             print(f"    nxlookup {c('green', 'github.com')}")
             print(f"    nxlookup {c('green', '8.8.8.8')}")
-            print(f"    nxlookup {c('dim', '(interactive mode)')}")
+            print(f"    nxlookup {c('dim', '(interactive)')}")
             print()
             sys.exit(0)
         if arg in ("--version", "-v"):
-            print("nxlookup v1.0.0 — Ultimate Domain/IP Investigation Tool")
+            print("nxlookup v1.1.0")
             sys.exit(0)
         target = arg
     else:
-        # Interactive mode
         print(banner())
         target = input(f"  {c('cyan', 'Enter domain or IP')} {c('dim', '>')} ").strip()
 
@@ -421,25 +493,19 @@ def main():
         print(f"{c('red', 'Error:')} no target provided.")
         sys.exit(1)
 
-    # Strip protocol, path, port, and www. prefix
+    # Clean input
     target = re.sub(r'^https?://', '', target)
     target = target.split('/')[0]
-    target = target.split(':')[0]  # strip port
-    target = re.sub(r'^www\.', '', target)  # strip www.
+    target = target.split(':')[0]
+    target = re.sub(r'^www\.', '', target)
 
-    # IDN → punycode for non-ASCII domains (e.g. объясняем.рф → xn--80aafh9a1amc6c5d.xn--p1ai)
+    # IDN support
     display_target = target
     if not target.isascii():
         try:
             target = target.encode('idna').decode('ascii')
         except (UnicodeError, ValueError):
-            pass  # fall through, will fail validation later
-
-    # Check tools
-    for tool in ["dig", "whois"]:
-        if not shutil.which(tool):
-            print(f"{c('red', 'Error:')} {tool} not found. Install it first.")
-            sys.exit(1)
+            pass
 
     if is_ip(target):
         display_ip(target)
