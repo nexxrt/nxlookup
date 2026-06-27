@@ -11,3 +11,5 @@ venv/
 .DS_Store
 push.sh
 git-credential-helper.sh
+git-credential-helper.sh
+push.sh
