@@ -26,11 +26,16 @@ Runs on Linux, macOS, Windows, WSL. Two modes:
 
 ## Install
 
-### One-liner (Linux / macOS / WSL)
+### One-liner (Linux / WSL)
 
 ```bash
-sudo curl -sSL https://raw.githubusercontent.com/nexxrt/nxlookup/main/nxlookup.py -o /usr/local/bin/nxlookup && sudo chmod +x /usr/local/bin/nxlookup
+sudo apt update && sudo apt install -y python3 dnsutils whois && sudo curl -sSL https://raw.githubusercontent.com/nexxrt/nxlookup/main/nxlookup.py -o /usr/local/bin/nxlookup && sudo chmod +x /usr/local/bin/nxlookup
 ```
+
+> **Arch:** `sudo pacman -S python bind whois` instead of apt  
+> **macOS:** `brew install python bind whois` then the curl line  
+
+If `python3` is missing after install, run: `sudo ln -s /usr/bin/python3 /usr/bin/python3 2>/dev/null; hash -r`
 
 ### From source
 
