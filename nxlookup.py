@@ -515,6 +515,10 @@ def main():
         print(f"{c('red', 'Error:')} '{target}' is not a valid domain or IP.")
         sys.exit(1)
 
+    # On Windows EXE: keep console open so user can read output
+    if os.name == "nt" and getattr(sys, 'frozen', False):
+        input(f"\n{c('dim', 'Press Enter to exit...')}")
+
 
 if __name__ == "__main__":
     main()
