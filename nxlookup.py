@@ -116,9 +116,9 @@ def ssl_check(domain: str) -> dict:
         return result
 
 def http_check(domain: str) -> dict:
-    """Check HTTP/HTTPS response. Returns status code, redirect, error."""
-    result = {"code": 0, "redirect": "", "error": "", "ok": False}
-    for proto, port in [("https", 443), ("http", 80)]:
+    """Check HTTP and HTTPS response. Returns status codes for both."""
+    result = {"https": 0, "http": 0, "redirect": "", "error": ""}
+    for proto, port, key in [("https", 443, "https"), ("http", 80, "http")]:
         try:
             ctx = ssl.create_default_context() if proto == "https" else None
             s = socket.create_connection((domain, port), timeout=8)
@@ -136,15 +136,14 @@ def http_check(domain: str) -> dict:
             status_line = resp.decode(errors="replace").split("\r\n")[0]
             m = re.match(r"HTTP/\S+\s+(\d+)", status_line)
             if m:
-                result["code"] = int(m.group(1))
-                result["ok"] = True
-            # Check for redirect
+                result[key] = int(m.group(1))
             headers = resp.decode(errors="replace")
             loc = re.search(r"(?i)^Location:\s*(.+)", headers, re.MULTILINE)
             if loc: result["redirect"] = loc.group(1).strip()
-            return result
         except Exception as e:
-            result["error"] = str(e)
+            if not result["error"]:
+                result["error"] = str(e)
+    result["ok"] = result["https"] > 0 or result["http"] > 0
     return result
 
 def is_ip(target: str) -> bool:
@@ -552,16 +551,19 @@ def display_domain(target: str, display_target: str = ""):
     # HTTP check
     http = http_check(target)
     if http["ok"]:
-        code = http["code"]
-        color = "green" if code == 200 else "yellow" if code in (301, 302, 307, 308) else "red"
-        label = f"HTTP {code}"
-        if http["redirect"]: label += f"  →  {http['redirect']}"
-        kv("Response", label)
-        if code >= 400:
-            msgs = {400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
-                    500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable"}
-            if code in msgs:
-                kv("", c(color, msgs[code]))
+        for proto, key in [("HTTPS", "https"), ("HTTP", "http")]:
+            code = http[key]
+            if code:
+                color = "green" if code == 200 else "yellow" if code in (301, 302, 307, 308) else "red"
+                label = f"HTTP {code}"
+                if http["redirect"] and key == "http" and http["https"] in (301, 302, 307, 308):
+                    label += f"  →  {http['redirect']}"
+                kv(proto, label)
+                if code >= 400:
+                    msgs = {400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
+                            500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable"}
+                    if code in msgs:
+                        kv("", c(color, msgs[code]))
     else:
         kv("Response", c('red', 'No HTTP response'))
 
