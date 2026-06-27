@@ -26,16 +26,33 @@ Runs on Linux, macOS, Windows, WSL. Two modes:
 
 ## Install
 
-### One-liner (Linux / WSL)
+**Ubuntu / Debian / WSL (Ubuntu)**
 
 ```bash
 sudo apt update && sudo apt install -y python3 dnsutils whois && sudo curl -sSL https://raw.githubusercontent.com/nexxrt/nxlookup/main/nxlookup.py -o /usr/local/bin/nxlookup && sudo chmod +x /usr/local/bin/nxlookup
 ```
 
-> **Arch:** `sudo pacman -S python bind whois` instead of apt  
-> **macOS:** `brew install python bind whois` then the curl line  
+**Arch / WSL (Arch)**
 
-If `python3` is missing after install, run: `sudo ln -s /usr/bin/python3 /usr/bin/python3 2>/dev/null; hash -r`
+```bash
+sudo pacman -S --noconfirm python bind whois && sudo curl -sSL https://raw.githubusercontent.com/nexxrt/nxlookup/main/nxlookup.py -o /usr/local/bin/nxlookup && sudo chmod +x /usr/local/bin/nxlookup
+```
+
+**Fedora / RHEL**
+
+```bash
+sudo dnf install -y python3 bind-utils whois && sudo curl -sSL https://raw.githubusercontent.com/nexxrt/nxlookup/main/nxlookup.py -o /usr/local/bin/nxlookup && sudo chmod +x /usr/local/bin/nxlookup
+```
+
+**macOS**
+
+```bash
+brew install python bind whois && sudo curl -sSL https://raw.githubusercontent.com/nexxrt/nxlookup/main/nxlookup.py -o /usr/local/bin/nxlookup && sudo chmod +x /usr/local/bin/nxlookup
+```
+
+**Windows (.exe)**
+
+Download `nxlookup.exe` from [Releases](https://github.com/nexxrt/nxlookup/releases) — no install needed.
 
 ### From source
 
