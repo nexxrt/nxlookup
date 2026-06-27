@@ -9,3 +9,5 @@ dist/
 venv/
 .env
 .DS_Store
+push.sh
+git-credential-helper.sh
