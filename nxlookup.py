@@ -161,10 +161,25 @@ def _whois_query(target: str) -> str:
 
 def _ip_whois_raw(ip: str) -> str:
     """Raw WHOIS for an IP address using direct socket connection."""
-    # Step 1: find RIR from IANA
+    return _socket_whois(ip, ip)
+
+def _domain_whois_socket(domain: str) -> str:
+    """Raw WHOIS for a domain — query IANA for TLD server, then query it."""
+    parts = domain.lower().rstrip('.').split('.')
+    # Multi-level TLDs (co.uk, com.au, etc.)
+    if len(parts) >= 2 and parts[-2] in ('co', 'org', 'net', 'com', 'gov', 'ac', 'me', 'ltd', 'plc', 'sch'):
+        tld = parts[-2] + '.' + parts[-1]
+    else:
+        tld = parts[-1]
+    return _socket_whois(tld, domain)
+
+def _socket_whois(iana_query: str, referral_query: str) -> str:
+    """Generic socket WHOIS with IANA referral.
+    Sends iana_query to whois.iana.org, follows referral, sends referral_query."""
     try:
+        # Step 1: query IANA for the right whois server
         s = socket.create_connection(("whois.iana.org", 43), timeout=10)
-        s.sendall((ip + "\r\n").encode())
+        s.sendall((iana_query + "\r\n").encode())
         resp = b""
         while True:
             chunk = s.recv(4096)
@@ -173,24 +188,26 @@ def _ip_whois_raw(ip: str) -> str:
             resp += chunk
         s.close()
         text = resp.decode("utf-8", errors="replace")
-        # Extract referral server
+
+        # Find referral server
         m = re.search(r'(?i)^refer:\s*(\S+)', text, re.MULTILINE)
         if not m:
             m = re.search(r'(?i)^whois:\s*(\S+)', text, re.MULTILINE)
-        if m:
-            server = m.group(1)
-            # Step 2: query the RIR
-            s2 = socket.create_connection((server, 43), timeout=10)
-            s2.sendall((ip + "\r\n").encode())
-            resp2 = b""
-            while True:
-                chunk = s2.recv(4096)
-                if not chunk:
-                    break
-                resp2 += chunk
-            s2.close()
-            return resp2.decode("utf-8", errors="replace")
-        return text
+        if not m:
+            return text
+
+        ref_server = m.group(1)
+        # Step 2: query the referral server
+        s2 = socket.create_connection((ref_server, 43), timeout=10)
+        s2.sendall((referral_query + "\r\n").encode())
+        resp2 = b""
+        while True:
+            chunk = s2.recv(4096)
+            if not chunk:
+                break
+            resp2 += chunk
+        s2.close()
+        return resp2.decode("utf-8", errors="replace")
     except Exception:
         return ""
 
@@ -258,7 +275,14 @@ def _domain_whois_data(domain: str) -> dict:
         except Exception:
             pass
 
-    # Fallback: system whois + regex parsing
+    # Fallback 1: direct socket WHOIS + regex parsing (works everywhere)
+    raw = _domain_whois_socket(domain)
+    if raw:
+        parsed = parse_domain_whois(raw)
+        if parsed.get("domain"):
+            return parsed
+
+    # Fallback 2: system whois CLI
     if HAS_WHOIS:
         try:
             r = subprocess.run(["whois", "-H", domain],
