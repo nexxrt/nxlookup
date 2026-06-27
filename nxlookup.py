@@ -12,6 +12,7 @@ import re
 import ipaddress
 import socket
 import os
+import ssl
 from datetime import datetime, timezone
 
 # ── Optional pure-Python deps ──────────────────────────────────────────
@@ -82,6 +83,42 @@ def kv_list(key: str, values: list):
     print(f"  {c('dim', key + ':') :<24s} {values[0]}")
     for v in values[1:]:
         print(f"  {'':24s} {v}")
+
+def ssl_check(domain: str) -> dict:
+    """Fetch SSL certificate info. Returns dict with issuer, subject, dates, days left."""
+    result = {"ok": False, "issuer": "", "subject": "", "not_before": "", "not_after": "", "days": None, "error": ""}
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection((domain, 443), timeout=8) as sock:
+            with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
+                cert = ssock.getpeercert()
+        result["ok"] = True
+        # issuer
+        issuer_parts = []
+        for item in cert.get("issuer", []):
+            for k, v in item:
+                if k == "commonName": issuer_parts.append(v)
+        result["issuer"] = ", ".join(issuer_parts) if issuer_parts else "—"
+        # subject
+        subj_parts = []
+        for item in cert.get("subject", []):
+            for k, v in item:
+                if k == "commonName": subj_parts.append(v)
+        result["subject"] = ", ".join(subj_parts) if subj_parts else "—"
+        # dates
+        nb = cert.get("notBefore", "")
+        na = cert.get("notAfter", "")
+        result["not_before"] = nb
+        result["not_after"] = na
+        # days left
+        if na:
+            import datetime
+            end = datetime.datetime.strptime(na, "%b %d %H:%M:%S %Y %Z")
+            result["days"] = (end - datetime.datetime.utcnow()).days
+        return result
+    except Exception as e:
+        result["error"] = str(e)
+        return result
 
 def is_ip(target: str) -> bool:
     try:
@@ -462,8 +499,29 @@ def display_domain(target: str, display_target: str = ""):
     else:
         print(f"  {c('red', '(no nameservers in WHOIS)')}")
 
-    # 2. DNS
-    section("2. DNS RESOURCE RECORDS")
+    # 1.5 SSL
+    section("2. SSL CERTIFICATE")
+    ssl = ssl_check(target)
+    if ssl["ok"]:
+        if ssl.get("subject"): kv("Subject", ssl["subject"])
+        if ssl.get("issuer"): kv("Issuer", ssl["issuer"], highlight=True)
+        if ssl.get("not_before"): kv("Valid from", ssl["not_before"])
+        if ssl.get("not_after"):
+            days = ssl.get("days")
+            label = f"{ssl['not_after']}"
+            if days is not None:
+                if days < 0:
+                    label += c('red', f"  (EXPIRED {abs(days)}d ago)")
+                elif days < 30:
+                    label += c('yellow', f"  ({days}d left)")
+                else:
+                    label += c('green', f"  ({days}d left)")
+            kv("Valid until", label)
+    else:
+        print(f"  {c('red', 'No SSL / connection failed')}")
+
+    # 3. DNS
+    section("3. DNS RESOURCE RECORDS")
     dns = dns_all(target)
 
     sub_section(f"A Records ({c('green', str(len(dns['A'])))})")
@@ -510,7 +568,7 @@ def display_domain(target: str, display_target: str = ""):
             print(f"    {c('dim', f'... and {remaining} more')}")
 
     # 3. IP Analysis
-    section("3. IP ADDRESS ANALYSIS")
+    section("4. IP ADDRESS ANALYSIS")
     all_ips = dns["A"] + dns["AAAA"]
     if not all_ips:
         print(f"  {c('red', 'No A/AAAA records.')}")
@@ -537,7 +595,7 @@ def display_domain(target: str, display_target: str = ""):
                 print(f"    {c('dim', 'Abuse Contact:') :<24s} {ipw['abuse']}")
 
     # 4. Summary
-    section("4. QUICK SUMMARY")
+    section("5. QUICK SUMMARY")
     print(f"  {c('bold', 'Domain:')}       {c('green', display_target)}")
     print(f"  {c('bold', 'Registrar:')}    {c('yellow', w.get('registrar', 'N/A'))}")
     exp_str = w.get('expires', '')
