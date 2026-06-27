@@ -12,6 +12,7 @@ import re
 import ipaddress
 import socket
 import os
+from datetime import datetime, timezone
 
 # ── Optional pure-Python deps ──────────────────────────────────────────
 try:
@@ -431,7 +432,20 @@ def display_domain(target: str, display_target: str = ""):
     if w["created"]:
         kv("Created", w["created"])
     if w["expires"]:
-        kv("Expires", w["expires"], highlight=True)
+        exp_str = w["expires"]
+        days = ""
+        for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d %H:%M:%S%z", "%Y-%m-%dT%H:%M:%S%z",
+                    "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                dt = datetime.strptime(exp_str, fmt)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                d = (dt - datetime.now(timezone.utc)).days
+                days = f" ({d}d left)" if d >= 0 else " (EXPIRED)"
+                break
+            except ValueError:
+                continue
+        kv("Expires", w["expires"] + days, highlight=True)
     if w["updated"]:
         kv("Updated", w["updated"])
     if w["country"]:
@@ -526,7 +540,19 @@ def display_domain(target: str, display_target: str = ""):
     section("4. QUICK SUMMARY")
     print(f"  {c('bold', 'Domain:')}       {c('green', display_target)}")
     print(f"  {c('bold', 'Registrar:')}    {c('yellow', w.get('registrar', 'N/A'))}")
-    print(f"  {c('bold', 'Expires:')}      {c('yellow', w.get('expires', 'N/A'))}")
+    exp_str = w.get('expires', '')
+    exp_display = exp_str or 'N/A'
+    if exp_str:
+        for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d %H:%M:%S%z", "%Y-%m-%dT%H:%M:%S%z",
+                    "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                dt = datetime.strptime(exp_str, fmt)
+                if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+                d = (dt - datetime.now(timezone.utc)).days
+                exp_display = f"{exp_str} ({d}d left)" if d >= 0 else f"{exp_str} (EXPIRED)"
+                break
+            except ValueError: continue
+    print(f"  {c('bold', 'Expires:')}      {c('yellow', exp_display)}")
     print(f"  {c('bold', 'Nameservers:')}  {c('green', str(len(w['nameservers'])))} found")
     a_list = ', '.join(dns['A'][:5])
     print(f"  {c('bold', 'A Records:')}    {c('green', str(len(dns['A'])))} — {a_list}{'...' if len(dns['A']) > 5 else ''}")
