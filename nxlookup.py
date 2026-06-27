@@ -467,33 +467,10 @@ def display_ip(target: str):
 
 # ── Main ───────────────────────────────────────────────────────────────
 
-def main():
-    target = None
-    if len(sys.argv) > 1:
-        arg = sys.argv[1].strip()
-        if arg in ("--help", "-h"):
-            print(banner())
-            print(f"  {c('bold', 'Usage:')}  nxlookup {c('cyan', '<domain | IP>')}")
-            print(f"  {c('bold', 'Examples:')}")
-            print(f"    nxlookup {c('green', 'yandex.ru')}")
-            print(f"    nxlookup {c('green', 'github.com')}")
-            print(f"    nxlookup {c('green', '8.8.8.8')}")
-            print(f"    nxlookup {c('dim', '(interactive)')}")
-            print()
-            sys.exit(0)
-        if arg in ("--version", "-v"):
-            print("nxlookup v1.1.0")
-            sys.exit(0)
-        target = arg
-    else:
-        print(banner())
-        target = input(f"  {c('cyan', 'Enter domain or IP')} {c('dim', '>')} ").strip()
-
-    if not target:
-        print(f"{c('red', 'Error:')} no target provided.")
-        sys.exit(1)
-
+def lookup(target: str):
+    """Process a single target (domain or IP). Returns True if valid, False otherwise."""
     # Clean input
+    original = target
     target = re.sub(r'^https?://', '', target)
     target = target.split('/')[0]
     target = target.split(':')[0]
@@ -509,15 +486,53 @@ def main():
 
     if is_ip(target):
         display_ip(target)
+        return True
     elif is_domain(target):
         display_domain(target, display_target)
+        return True
     else:
-        print(f"{c('red', 'Error:')} '{target}' is not a valid domain or IP.")
-        sys.exit(1)
+        print(f"{c('red', 'Error:')} '{original}' is not a valid domain or IP.")
+        return False
 
-    # On Windows EXE: keep console open so user can read output
-    if os.name == "nt" and getattr(sys, 'frozen', False):
-        input(f"\n{c('dim', 'Press Enter to exit...')}")
+
+def main():
+    target = None
+    if len(sys.argv) > 1:
+        arg = sys.argv[1].strip()
+        if arg in ("--help", "-h"):
+            print(banner())
+            print(f"  {c('bold', 'Usage:')}  nxlookup {c('cyan', '<domain | IP>')}")
+            print(f"  {c('bold', 'Examples:')}")
+            print(f"    nxlookup {c('green', 'yandex.ru')}")
+            print(f"    nxlookup {c('green', 'github.com')}")
+            print(f"    nxlookup {c('green', '8.8.8.8')}")
+            print(f"    nxlookup {c('dim', '(interactive)')}")
+            print()
+            sys.exit(0)
+        if arg in ("--version", "-v"):
+            print("nxlookup v1.1.1")
+            sys.exit(0)
+        # Single-shot mode: one lookup then exit
+        if not lookup(arg):
+            sys.exit(1)
+        return
+
+    # Interactive mode (no args or .exe double-click)
+    print(banner())
+    print(f"  {c('dim', 'Type a domain or IP. Empty line, exit or quit to quit.')}")
+    print()
+    while True:
+        try:
+            target = input(f"  {c('cyan', 'nxlookup')} {c('dim', '>')} ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n  {c('dim', 'Bye.')}")
+            break
+        if not target or target.lower() in ("exit", "quit", "q"):
+            print(f"  {c('dim', 'Bye.')}")
+            break
+        print()
+        lookup(target)
+        print()
 
 
 if __name__ == "__main__":
