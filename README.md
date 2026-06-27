@@ -62,7 +62,7 @@ Restart when prompted. After reboot, a Ubuntu terminal will open — create a us
 
 ```bash
 sudo apt update
-sudo apt install -y dnsutils whois
+sudo apt install -y python3 dnsutils whois
 ```
 
 **3. Install nxlookup:**
