@@ -194,9 +194,98 @@ def _ip_whois_raw(ip: str) -> str:
     except Exception:
         return ""
 
+def _domain_whois_data(domain: str) -> dict:
+    """WHOIS lookup for a domain — returns parsed dict with structured fields."""
+    data = {
+        "domain": "", "registrar": "", "whois_server": "", "status": [],
+        "nameservers": [], "created": "", "expires": "", "updated": "",
+        "registrant": "", "org": "", "country": "",
+    }
+
+    # Prefer python-whois structured data
+    if HAS_PYWHOIS:
+        try:
+            w = pywhois.whois(domain)
+            # domain name
+            dn = w.get('domain_name')
+            if dn:
+                data["domain"] = dn if isinstance(dn, str) else dn[0]
+            # registrar
+            r = w.get('registrar')
+            if r:
+                data["registrar"] = r if isinstance(r, str) else r
+            # whois server
+            ws = w.get('whois_server')
+            if ws:
+                data["whois_server"] = ws if isinstance(ws, str) else ws
+            # nameservers — strip trailing dot and inline IPs
+            ns = w.get('name_servers')
+            if ns:
+                cleaned = []
+                for n in ns:
+                    if n:
+                        host = n.split()[0].rstrip('.').lower()
+                        cleaned.append(host)
+                data["nameservers"] = cleaned
+            # status
+            st = w.get('status')
+            if st:
+                data["status"] = st if isinstance(st, list) else [st]
+            # dates
+            cd = w.get('creation_date')
+            if cd:
+                data["created"] = str(cd if isinstance(cd, str) else cd[0] if isinstance(cd, list) else cd)
+            ed = w.get('expiration_date')
+            if ed:
+                data["expires"] = str(ed if isinstance(ed, str) else ed[0] if isinstance(ed, list) else ed)
+            ud = w.get('updated_date')
+            if ud:
+                data["updated"] = str(ud if isinstance(ud, str) else ud[0] if isinstance(ud, list) else ud)
+            # org
+            o = w.get('org')
+            if o:
+                data["org"] = o if isinstance(o, str) else o
+            # country
+            c = w.get('country')
+            if c:
+                data["country"] = c if isinstance(c, str) else c
+            # registrant
+            reg = w.get('name') or w.get('registrant_name')
+            if reg:
+                data["registrant"] = reg if isinstance(reg, str) else reg
+
+            return data
+        except Exception:
+            pass
+
+    # Fallback: system whois + regex parsing
+    if HAS_WHOIS:
+        try:
+            r = subprocess.run(["whois", "-H", domain],
+                             capture_output=True, text=True, timeout=20)
+            return parse_domain_whois(r.stdout)
+        except Exception:
+            pass
+
+    return data
+
+
 def _domain_whois_raw(domain: str) -> str:
-    """WHOIS for a domain — pure Python when available."""
-    return _whois_query(domain)
+    """Raw WHOIS text for a domain (used only as fallback display)."""
+    if HAS_PYWHOIS:
+        try:
+            w = pywhois.whois(domain)
+            return w.text if hasattr(w, 'text') and w.text else ""
+        except Exception:
+            pass
+    if HAS_WHOIS:
+        try:
+            r = subprocess.run(["whois", "-H", domain],
+                             capture_output=True, text=True, timeout=20)
+            return r.stdout
+        except Exception:
+            pass
+    return ""
 
 def ip_whois_raw(ip: str) -> str:
     """WHOIS for an IP."""
@@ -303,8 +392,7 @@ def display_domain(target: str, display_target: str = ""):
 
     # 1. WHOIS
     section("1. WHOIS DATA")
-    raw = _domain_whois_raw(target)
-    w = parse_domain_whois(raw)
+    w = _domain_whois_data(target)
 
     if w["domain"]:
         kv("Domain", w["domain"])

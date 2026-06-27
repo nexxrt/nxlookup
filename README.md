@@ -156,20 +156,38 @@ $ nxlookup github.com
 
 ## Supported TLDs
 
-The tool uses the system `whois` with an extended config covering 90+ zones:
+Two levels of whois coverage are available:
 
-| Region | TLDs |
-|--------|------|
-| Russia/CIS | ru, рф, su, kz, by, uz, kg, tj, tm, az, ge, am, md, ua |
-| Europe | eu, it, de, fr, nl, be, ch, at, es, pt, pl, se, no, dk, fi, ie, cz, sk, hu, lt, lv, ee, lu, is, gr |
-| UK | uk, co.uk, org.uk, me.uk |
-| Asia-Pacific | cn, jp, kr, in, sg, au, nz, hk, tw, ph, my |
-| gTLD | com, net, org, info, biz, name, mobi, xxx, tel, aero, asia, cat |
-| New gTLD | xyz, top, club, online, site, shop, blog, app, dev, cloud, tech, digital, email, guru, link, live, media, rocks, solutions, space, today, website, world, zone |
-| Island/ccTLD | io, me, tv, cc, ws, tk |
-| Americas | ca, br, mx, us, co, pe, cl, ar |
+### Normal (~90 zones) — default
 
-`.pro` uses RDAP (port 43 whois is disabled) — queried over HTTPS.
+Built into the system `whois` on most Linux distros. For additional coverage, install the bundled config:
+
+```bash
+sudo cp whois.conf /etc/whois.conf
+```
+
+### Extended (250+ zones)
+
+For maximum coverage — Africa, Middle East, more new gTLDs:
+
+```bash
+sudo cp whois-extended.conf /etc/whois.conf
+```
+
+> **Note for Windows users:** `nxlookup.exe` uses `python-whois` library which queries whois servers directly — no system config needed. Both normal and extended configs are for Linux/macOS `whois` CLI only.
+
+| Region | Normal | Extended adds |
+|--------|--------|---------------|
+| Russia/CIS | 14 | +2 IDN variants |
+| Europe | 25 | +10 (ro, bg, hr, si, rs, ba, al, mk, mt, cy, li, mc, sm, va) |
+| UK | 4 | +6 (.ltd.uk, .plc.uk, .net.uk, .ac.uk, .gov.uk, .sch.uk) |
+| Asia-Pacific | 14 | +12 (th, vn, id, bd, pk, lk, np, mn, kh, la, mm, bn, mo) |
+| gTLD | 15 | +5 (edu, gov, mil, int, arpa) |
+| New gTLD | 25 | +120 (full Identity Digital, Donuts, Google Registry, specialty TLDs) |
+| Island/Pacific | 4 | +16 (fm, to, pw, nu, cx, gs, ms, vg, tc, gd, ki, nf, pn, tl, vu, ck, fj, pg, sb) |
+| Americas | 9 | +18 (ve, ec, uy, py, bo, do, cr, pa, gt, sv, hn, ni, cu, jm, tt, bb, bs, bz, ky) |
+| Africa | none | +16 (za, ng, ke, eg, ma, tn, dz, mu, gh, rw, tz, ug, zm, zw, na, bw, ls, sz) |
+| Middle East | none | +14 (il, ae, sa, qa, ir, tr, lb, jo, bh, kw, om, ps, ye, iq, sy) |
 
 ## Building a standalone Windows EXE
 
