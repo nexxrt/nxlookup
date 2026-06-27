@@ -156,38 +156,30 @@ $ nxlookup github.com
 
 ## Supported TLDs
 
-Two levels of whois coverage are available:
-
-### Normal (~90 zones) — default
-
-Built into the system `whois` on most Linux distros. For additional coverage, install the bundled config:
+The default `whois.conf` covers 250+ zones. For a lighter config (~90 zones), use `whois-normal.conf`:
 
 ```bash
+# Default — full coverage (250+ zones)
 sudo cp whois.conf /etc/whois.conf
+
+# Light — core zones only (~90 zones)
+sudo cp whois-normal.conf /etc/whois.conf
 ```
 
-### Extended (250+ zones)
+> **Note for Windows users:** `nxlookup.exe` uses direct socket connections and `python-whois` library — no system config needed.
 
-For maximum coverage — Africa, Middle East, more new gTLDs:
-
-```bash
-sudo cp whois-extended.conf /etc/whois.conf
-```
-
-> **Note for Windows users:** `nxlookup.exe` uses `python-whois` library which queries whois servers directly — no system config needed. Both normal and extended configs are for Linux/macOS `whois` CLI only.
-
-| Region | Normal | Extended adds |
-|--------|--------|---------------|
+| Region | Normal (~90) | Extended adds |
+|--------|-------------|---------------|
 | Russia/CIS | 14 | +2 IDN variants |
 | Europe | 25 | +10 (ro, bg, hr, si, rs, ba, al, mk, mt, cy, li, mc, sm, va) |
 | UK | 4 | +6 (.ltd.uk, .plc.uk, .net.uk, .ac.uk, .gov.uk, .sch.uk) |
 | Asia-Pacific | 14 | +12 (th, vn, id, bd, pk, lk, np, mn, kh, la, mm, bn, mo) |
 | gTLD | 15 | +5 (edu, gov, mil, int, arpa) |
-| New gTLD | 25 | +120 (full Identity Digital, Donuts, Google Registry, specialty TLDs) |
-| Island/Pacific | 4 | +16 (fm, to, pw, nu, cx, gs, ms, vg, tc, gd, ki, nf, pn, tl, vu, ck, fj, pg, sb) |
-| Americas | 9 | +18 (ve, ec, uy, py, bo, do, cr, pa, gt, sv, hn, ni, cu, jm, tt, bb, bs, bz, ky) |
-| Africa | none | +16 (za, ng, ke, eg, ma, tn, dz, mu, gh, rw, tz, ug, zm, zw, na, bw, ls, sz) |
-| Middle East | none | +14 (il, ae, sa, qa, ir, tr, lb, jo, bh, kw, om, ps, ye, iq, sy) |
+| New gTLD | 25 | +120 (Identity Digital, Donuts, Google Registry, specialty) |
+| Island/Pacific | 4 | +16 (fm, to, pw, nu, cx, gs, ms, vg, tc, gd, ki, ...) |
+| Americas | 9 | +18 (ve, ec, uy, py, bo, do, cr, pa, gt, sv, hn, ...) |
+| Africa | none | +16 (za, ng, ke, eg, ma, tn, dz, mu, gh, rw, tz, ...) |
+| Middle East | none | +14 (il, ae, sa, qa, ir, tr, lb, jo, bh, kw, om, ...) |
 
 ## Building a standalone Windows EXE
 
