@@ -559,9 +559,13 @@ def display_domain(target: str, display_target: str = ""):
                 if http["redirect"] and key == "http" and http["https"] in (301, 302, 307, 308):
                     label += f"  →  {http['redirect']}"
                 kv(proto, label)
-                if code >= 400:
-                    msgs = {400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
-                            500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable"}
+                if code >= 400 or code in (301, 302, 307, 308):
+                    msgs = {
+                        301: "Moved Permanently", 302: "Found", 307: "Temporary Redirect", 308: "Permanent Redirect",
+                        400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
+                        405: "Method Not Allowed", 429: "Too Many Requests",
+                        500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable", 504: "Gateway Timeout",
+                    }
                     if code in msgs:
                         kv("", c(color, msgs[code]))
     else:
