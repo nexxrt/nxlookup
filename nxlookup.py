@@ -85,35 +85,30 @@ def kv_list(key: str, values: list):
         print(f"  {'':24s} {v}")
 
 def ssl_check(domain: str) -> dict:
-    """Fetch SSL certificate info. Returns dict with issuer, subject, dates, days left."""
-    result = {"ok": False, "issuer": "", "subject": "", "not_before": "", "not_after": "", "days": None, "error": ""}
+    """Fetch SSL certificate info."""
+    result = {"ok": False, "subject_cn": "", "subject_o": "", "issuer_cn": "", "issuer_o": "",
+              "not_before": "", "not_after": "", "days": None, "error": ""}
     try:
         ctx = ssl.create_default_context()
         with socket.create_connection((domain, 443), timeout=8) as sock:
             with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
                 cert = ssock.getpeercert()
         result["ok"] = True
-        # issuer
-        issuer_parts = []
-        for item in cert.get("issuer", []):
-            for k, v in item:
-                if k == "commonName": issuer_parts.append(v)
-        result["issuer"] = ", ".join(issuer_parts) if issuer_parts else "—"
-        # subject
-        subj_parts = []
+        # Subject
         for item in cert.get("subject", []):
             for k, v in item:
-                if k == "commonName": subj_parts.append(v)
-        result["subject"] = ", ".join(subj_parts) if subj_parts else "—"
-        # dates
-        nb = cert.get("notBefore", "")
-        na = cert.get("notAfter", "")
-        result["not_before"] = nb
-        result["not_after"] = na
-        # days left
-        if na:
-            import datetime
-            end = datetime.datetime.strptime(na, "%b %d %H:%M:%S %Y %Z")
+                if k == "commonName": result["subject_cn"] = v
+                if k == "organizationName": result["subject_o"] = v
+        # Issuer
+        for item in cert.get("issuer", []):
+            for k, v in item:
+                if k == "commonName": result["issuer_cn"] = v
+                if k == "organizationName": result["issuer_o"] = v
+        # Dates
+        result["not_before"] = cert.get("notBefore", "")
+        result["not_after"] = cert.get("notAfter", "")
+        if result["not_after"]:
+            end = datetime.strptime(result["not_after"], "%b %d %H:%M:%S %Y %Z")
             result["days"] = (end.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).days
         return result
     except Exception as e:
@@ -503,8 +498,10 @@ def display_domain(target: str, display_target: str = ""):
     section("2. SSL CERTIFICATE")
     ssl = ssl_check(target)
     if ssl["ok"]:
-        if ssl.get("subject"): kv("Subject", ssl["subject"])
-        if ssl.get("issuer"): kv("Issuer", ssl["issuer"], highlight=True)
+        if ssl.get("subject_cn"): kv("Issued to", ssl["subject_cn"], highlight=True)
+        if ssl.get("subject_o"): kv("Organization", ssl["subject_o"])
+        if ssl.get("issuer_cn"): kv("Issued by", ssl["issuer_cn"], highlight=True)
+        if ssl.get("issuer_o"): kv("Issuer Org", ssl["issuer_o"])
         if ssl.get("not_before"): kv("Valid from", ssl["not_before"])
         if ssl.get("not_after"):
             days = ssl.get("days")
