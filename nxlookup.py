@@ -115,6 +115,38 @@ def ssl_check(domain: str) -> dict:
         result["error"] = str(e)
         return result
 
+def http_check(domain: str) -> dict:
+    """Check HTTP/HTTPS response. Returns status code, redirect, error."""
+    result = {"code": 0, "redirect": "", "error": "", "ok": False}
+    for proto, port in [("https", 443), ("http", 80)]:
+        try:
+            ctx = ssl.create_default_context() if proto == "https" else None
+            s = socket.create_connection((domain, port), timeout=8)
+            if ctx:
+                s = ctx.wrap_socket(s, server_hostname=domain)
+            req = f"HEAD / HTTP/1.1\r\nHost: {domain}\r\nConnection: close\r\n\r\n"
+            s.sendall(req.encode())
+            resp = b""
+            while True:
+                chunk = s.recv(4096)
+                if not chunk: break
+                resp += chunk
+                if b"\r\n\r\n" in resp: break
+            s.close()
+            status_line = resp.decode(errors="replace").split("\r\n")[0]
+            m = re.match(r"HTTP/\S+\s+(\d+)", status_line)
+            if m:
+                result["code"] = int(m.group(1))
+                result["ok"] = True
+            # Check for redirect
+            headers = resp.decode(errors="replace")
+            loc = re.search(r"(?i)^Location:\s*(.+)", headers, re.MULTILINE)
+            if loc: result["redirect"] = loc.group(1).strip()
+            return result
+        except Exception as e:
+            result["error"] = str(e)
+    return result
+
 def is_ip(target: str) -> bool:
     try:
         ipaddress.ip_address(target)
@@ -516,6 +548,22 @@ def display_domain(target: str, display_target: str = ""):
             kv("Valid until", label)
     else:
         print(f"  {c('red', 'No SSL / connection failed')}")
+
+    # HTTP check
+    http = http_check(target)
+    if http["ok"]:
+        code = http["code"]
+        color = "green" if code == 200 else "yellow" if code in (301, 302, 307, 308) else "red"
+        label = f"HTTP {code}"
+        if http["redirect"]: label += f"  →  {http['redirect']}"
+        kv("Response", label)
+        if code >= 400:
+            msgs = {400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
+                    500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable"}
+            if code in msgs:
+                kv("", c(color, msgs[code]))
+    else:
+        kv("Response", c('red', 'No HTTP response'))
 
     # 3. DNS
     section("3. DNS RESOURCE RECORDS")
