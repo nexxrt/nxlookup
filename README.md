@@ -4,7 +4,7 @@ Domain and IP investigation tool — WHOIS, DNS records, IP/ASN info in one comm
 
 > 🖥 **[nxlookup-ui](https://github.com/nexxrt/nxlookup-ui)** — desktop GUI version (Flask + pywebview)
 
-![screenshot](screenshots/nxlookup-cli.png)
+![screenshot](screenshots/nxlookup-main.png)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://python.org)
@@ -16,13 +16,15 @@ Runs on Linux, macOS, Windows, WSL. Two modes:
 
 ## Features
 
-- WHOIS with registrar, dates, statuses, nameservers (resolves NS hostnames to IPs)
+- WHOIS with registrar, dates, expiry countdown, nameservers (resolves NS hostnames to IPs)
+- SSL certificate check — issuer, subject (CN/O), validity dates, days remaining
+- HTTP/HTTPS status — response codes with descriptions (200 OK, 502 Bad Gateway, etc.)
 - DNS records: A, AAAA, MX, NS, TXT, SOA, CNAME
 - Per-IP analysis: PTR, ASN/provider, IP range, country, abuse contact
 - IDN domains (объясняем.рф, 百度.cn) — auto punycode conversion
 - URL input: `https://www.example.com/path` → strips to `example.com`
 - IP mode: WHOIS + reverse DNS for direct IP lookups
-- 90+ TLDs supported (ru, рф, com, net, org, it, de, fr, uk, cn, io, me, tv, ...)
+- 250+ TLDs supported
 
 ## Install
 
@@ -152,7 +154,16 @@ $ nxlookup github.com
     [3] NS-421.AWSDNS-52.COM  →  205.251.193.165
     ... 5 more
 
-━━━ 2. DNS RESOURCE RECORDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ 2. SSL CERTIFICATE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Issued to:       github.com
+  Issued by:       Sectigo E36
+  Issuer Org:      Sectigo
+  Valid from:      May  5 00:00:00 2026 GMT
+  Valid until:     Aug  2 23:59:59 2026 GMT  (36d left)
+  HTTPS:           HTTP 200 — OK
+  HTTP:            HTTP 301 — Moved Permanently
+
+━━━ 3. DNS RESOURCE RECORDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   ▸ A Records (1)
     140.82.121.4
   ▸ MX Records (1)
