@@ -13,6 +13,7 @@ import ipaddress
 import socket
 import os
 import ssl
+import threading
 from datetime import datetime, timezone
 
 # ── Optional pure-Python deps ──────────────────────────────────────────
@@ -85,35 +86,50 @@ def kv_list(key: str, values: list):
         print(f"  {'':24s} {v}")
 
 def ssl_check(domain: str) -> dict:
-    """Fetch SSL certificate info."""
+    """Fetch SSL certificate info — IPv4 first, 7s hard timeout."""
     result = {"ok": False, "subject_cn": "", "subject_o": "", "issuer_cn": "", "issuer_o": "",
               "not_before": "", "not_after": "", "days": None, "error": ""}
-    try:
+
+    def _do():
+        last_error = ""
         ctx = ssl.create_default_context()
-        with socket.create_connection((domain, 443), timeout=8) as sock:
-            with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
-                cert = ssock.getpeercert()
-        result["ok"] = True
-        # Subject
-        for item in cert.get("subject", []):
-            for k, v in item:
-                if k == "commonName": result["subject_cn"] = v
-                if k == "organizationName": result["subject_o"] = v
-        # Issuer
-        for item in cert.get("issuer", []):
-            for k, v in item:
-                if k == "commonName": result["issuer_cn"] = v
-                if k == "organizationName": result["issuer_o"] = v
-        # Dates
-        result["not_before"] = cert.get("notBefore", "")
-        result["not_after"] = cert.get("notAfter", "")
-        if result["not_after"]:
-            end = datetime.strptime(result["not_after"], "%b %d %H:%M:%S %Y %Z")
-            result["days"] = (end.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).days
-        return result
-    except Exception as e:
-        result["error"] = str(e)
-        return result
+        for family in (socket.AF_INET, socket.AF_INET6):
+            try:
+                addrs = socket.getaddrinfo(domain, 443, family, socket.SOCK_STREAM)
+                if addrs:
+                    ip = addrs[0][4][0]
+                    try:
+                        sock = socket.create_connection((ip, 443), timeout=3)
+                        sock.settimeout(3)
+                        with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
+                            cert = ssock.getpeercert()
+                        result["ok"] = True
+                        for item in cert.get("subject", []):
+                            for k, v in item:
+                                if k == "commonName": result["subject_cn"] = v
+                                if k == "organizationName": result["subject_o"] = v
+                        for item in cert.get("issuer", []):
+                            for k, v in item:
+                                if k == "commonName": result["issuer_cn"] = v
+                                if k == "organizationName": result["issuer_o"] = v
+                        result["not_before"] = cert.get("notBefore", "")
+                        result["not_after"] = cert.get("notAfter", "")
+                        if result["not_after"]:
+                            end = datetime.strptime(result["not_after"], "%b %d %H:%M:%S %Y %Z")
+                            result["days"] = (end.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).days
+                        return
+                    except Exception as e:
+                        last_error = str(e)
+            except Exception:
+                continue
+        result["error"] = last_error or "No SSL / connection failed"
+
+    t = threading.Thread(target=_do, daemon=True)
+    t.start()
+    t.join(timeout=7)
+    if t.is_alive():
+        result["error"] = "No SSL / connection failed (timeout)"
+    return result
 
 def http_check(domain: str) -> dict:
     """Check HTTP and HTTPS response. Returns status codes for both."""
@@ -162,11 +178,11 @@ def is_domain(target: str) -> bool:
 # ── DNS (pure Python via dnspython, fallback to dig) ───────────────────
 
 def _dns_resolve(domain: str, rtype: str) -> list[str]:
-    """Resolve DNS records using dnspython."""
+    """Resolve DNS records using dnspython (0.5s timeout)."""
     if not HAS_DNSPYTHON:
         return _dns_dig(domain, rtype)
     try:
-        answers = dns.resolver.resolve(domain, rtype)
+        answers = dns.resolver.resolve(domain, rtype, lifetime=0.5)
         return [str(r).rstrip('.') for r in answers]
     except Exception:
         return []
@@ -185,20 +201,29 @@ def dns_query(domain: str, rtype: str) -> list[str]:
 
 def dns_all(domain: str) -> dict:
     types = ["A", "AAAA", "MX", "NS", "TXT", "SOA", "CNAME"]
-    return {t: dns_query(domain, t) for t in types}
+    result = {t: [] for t in types}
+
+    def _do():
+        for t in types:
+            result[t] = dns_query(domain, t)
+
+    t = threading.Thread(target=_do, daemon=True)
+    t.start()
+    t.join(timeout=3)
+    return result
 
 def ptr_lookup(ip: str) -> str:
     """Reverse DNS."""
     if HAS_DNSPYTHON:
         try:
             addr = dns.reversename.from_address(ip)
-            answers = dns.resolver.resolve(addr, "PTR")
+            answers = dns.resolver.resolve(addr, "PTR", lifetime=1)
             return str(answers[0]).rstrip('.')
         except Exception:
             return ""
     try:
         out = subprocess.run(["dig", "+short", "-x", ip],
-                           capture_output=True, text=True, timeout=10)
+                           capture_output=True, text=True, timeout=5)
         return out.stdout.strip().rstrip('.')
     except Exception:
         return ""
@@ -525,9 +550,14 @@ def display_domain(target: str, display_target: str = ""):
     else:
         print(f"  {c('red', '(no nameservers in WHOIS)')}")
 
-    # 1.5 SSL
+    # 2. SSL — skip if no A records
     section("2. SSL CERTIFICATE")
-    ssl = ssl_check(target)
+    a_records = dns_query(target, "A")
+    ssl = {"ok": False}
+    if not a_records:
+        print(f"  {c('dim', 'Skipped — no A records')}")
+    else:
+        ssl = ssl_check(target)
     if ssl["ok"]:
         if ssl.get("subject_cn"): kv("Issued to", ssl["subject_cn"], highlight=True)
         if ssl.get("subject_o"): kv("Organization", ssl["subject_o"])
@@ -545,11 +575,15 @@ def display_domain(target: str, display_target: str = ""):
                 else:
                     label += c('green', f"  ({days}d left)")
             kv("Valid until", label)
-    else:
+    elif a_records:
         print(f"  {c('red', 'No SSL / connection failed')}")
 
-    # HTTP check
-    http = http_check(target)
+    # HTTP — skip if no A records
+    http = {"ok": False}
+    if a_records:
+        http = http_check(target)
+    else:
+        print(f"  {c('dim', 'Skipped — no A records')}")
     if http["ok"]:
         for proto, key in [("HTTPS", "https"), ("HTTP", "http")]:
             code = http[key]
@@ -567,7 +601,7 @@ def display_domain(target: str, display_target: str = ""):
                 if http["redirect"] and key == "http" and http["https"] in (301, 302, 307, 308):
                     label += f"  →  {http['redirect']}"
                 kv(proto, label)
-    else:
+    elif a_records:
         kv("Response", c('red', 'No HTTP response'))
 
     # 3. DNS
