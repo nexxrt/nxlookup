@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/root/nexxlookup/.venv/bin/python3
 """
 nxlookup — Domain/IP Investigation Tool
 Cross-platform: Linux, macOS, Windows, WSL.
