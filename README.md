@@ -263,3 +263,10 @@ The EXE includes `dnspython` (DNS resolution) and a built-in WHOIS client (direc
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+# Performance
+
+All network operations have hard timeouts:
+- DNS: 0.5s per query, 3s total
+- SSL: 7s hard limit
+- WHOIS: 10s socket timeout
