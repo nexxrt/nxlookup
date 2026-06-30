@@ -254,12 +254,9 @@ def _ip_whois_raw(ip: str) -> str:
 
 def _domain_whois_socket(domain: str) -> str:
     """Raw WHOIS for a domain — query IANA for TLD server, then query it."""
-    parts = domain.lower().rstrip('.').split('.')
-    # Multi-level TLDs (co.uk, com.au, etc.)
-    if len(parts) >= 2 and parts[-2] in ('co', 'org', 'net', 'com', 'gov', 'ac', 'me', 'ltd', 'plc', 'sch'):
-        tld = parts[-2] + '.' + parts[-1]
-    else:
-        tld = parts[-1]
+    # Always use the actual TLD (last part) for IANA referral.
+    # IANA delegates per-TLD; the referral server handles SLDs like co.uk, com.ru, etc.
+    tld = domain.lower().rstrip('.').split('.')[-1]
     return _socket_whois(tld, domain)
 
 def _socket_whois(iana_query: str, referral_query: str) -> str:
