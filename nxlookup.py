@@ -97,68 +97,80 @@ def ssl_check(domain: str) -> dict:
             try:
                 addrs = socket.getaddrinfo(domain, 443, family, socket.SOCK_STREAM)
                 if addrs:
-                    ip = addrs[0][4][0]
-                    try:
-                        sock = socket.create_connection((ip, 443), timeout=3)
-                        sock.settimeout(3)
-                        with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
-                            cert = ssock.getpeercert()
-                        result["ok"] = True
-                        for item in cert.get("subject", []):
-                            for k, v in item:
-                                if k == "commonName": result["subject_cn"] = v
-                                if k == "organizationName": result["subject_o"] = v
-                        for item in cert.get("issuer", []):
-                            for k, v in item:
-                                if k == "commonName": result["issuer_cn"] = v
-                                if k == "organizationName": result["issuer_o"] = v
-                        result["not_before"] = cert.get("notBefore", "")
-                        result["not_after"] = cert.get("notAfter", "")
-                        if result["not_after"]:
-                            end = datetime.strptime(result["not_after"], "%b %d %H:%M:%S %Y %Z")
-                            result["days"] = (end.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).days
-                        return
-                    except Exception as e:
-                        last_error = str(e)
+                    # Try each IP with short timeout, stop on first success
+                    for addr in addrs[:2]:  # max 2 IPs per family
+                        ip = addr[4][0]
+                        try:
+                            sock = socket.create_connection((ip, 443), timeout=1.5)
+                            sock.settimeout(1.5)
+                            with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
+                                cert = ssock.getpeercert()
+                            result["ok"] = True
+                            for item in cert.get("subject", []):
+                                for k, v in item:
+                                    if k == "commonName": result["subject_cn"] = v
+                                    if k == "organizationName": result["subject_o"] = v
+                            for item in cert.get("issuer", []):
+                                for k, v in item:
+                                    if k == "commonName": result["issuer_cn"] = v
+                                    if k == "organizationName": result["issuer_o"] = v
+                            result["not_before"] = cert.get("notBefore", "")
+                            result["not_after"] = cert.get("notAfter", "")
+                            if result["not_after"]:
+                                end = datetime.strptime(result["not_after"], "%b %d %H:%M:%S %Y %Z")
+                                result["days"] = (end.replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)).days
+                            return
+                        except Exception as e:
+                            last_error = str(e)
             except Exception:
                 continue
         result["error"] = last_error or "No SSL / connection failed"
 
     t = threading.Thread(target=_do, daemon=True)
     t.start()
-    t.join(timeout=7)
+    t.join(timeout=4)
     if t.is_alive():
         result["error"] = "No SSL / connection failed (timeout)"
     return result
 
 def http_check(domain: str) -> dict:
-    """Check HTTP and HTTPS response. Returns status codes for both."""
+    """Check HTTP and HTTPS response — fast with short timeouts."""
     result = {"https": 0, "http": 0, "redirect": "", "error": ""}
     for proto, port, key in [("https", 443, "https"), ("http", 80, "http")]:
-        try:
-            ctx = ssl.create_default_context() if proto == "https" else None
-            s = socket.create_connection((domain, port), timeout=8)
-            if ctx:
-                s = ctx.wrap_socket(s, server_hostname=domain)
-            req = f"HEAD / HTTP/1.1\r\nHost: {domain}\r\nConnection: close\r\n\r\n"
-            s.sendall(req.encode())
-            resp = b""
-            while True:
-                chunk = s.recv(4096)
-                if not chunk: break
-                resp += chunk
-                if b"\r\n\r\n" in resp: break
-            s.close()
-            status_line = resp.decode(errors="replace").split("\r\n")[0]
-            m = re.match(r"HTTP/\S+\s+(\d+)", status_line)
-            if m:
-                result[key] = int(m.group(1))
-            headers = resp.decode(errors="replace")
-            loc = re.search(r"(?i)^Location:\s*(.+)", headers, re.MULTILINE)
-            if loc: result["redirect"] = loc.group(1).strip()
-        except Exception as e:
-            if not result["error"]:
-                result["error"] = str(e)
+        ctx = ssl.create_default_context() if proto == "https" else None
+        for family in (socket.AF_INET, socket.AF_INET6):
+            try:
+                addrs = socket.getaddrinfo(domain, port, family, socket.SOCK_STREAM)
+                if addrs:
+                    ip = addrs[0][4][0]
+                    try:
+                        s = socket.create_connection((ip, port), timeout=2)
+                        s.settimeout(2)
+                        if ctx:
+                            s = ctx.wrap_socket(s, server_hostname=domain)
+                        req = f"HEAD / HTTP/1.1\r\nHost: {domain}\r\nConnection: close\r\n\r\n"
+                        s.sendall(req.encode())
+                        resp = b""
+                        while True:
+                            chunk = s.recv(4096)
+                            if not chunk: break
+                            resp += chunk
+                            if b"\r\n\r\n" in resp: break
+                        s.close()
+                        status_line = resp.decode(errors="replace").split("\r\n")[0]
+                        m = re.match(r"HTTP/\S+\s+(\d+)", status_line)
+                        if m:
+                            result[key] = int(m.group(1))
+                        headers = resp.decode(errors="replace")
+                        loc = re.search(r"(?i)^Location:\s*(.+)", headers, re.MULTILINE)
+                        if loc: result["redirect"] = loc.group(1).strip()
+                        break
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+            if result[key]:
+                break
     result["ok"] = result["https"] > 0 or result["http"] > 0
     return result
 
