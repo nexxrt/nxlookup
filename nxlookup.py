@@ -86,7 +86,8 @@ def kv_list(key: str, values: list):
         print(f"  {'':24s} {v}")
 
 def ssl_check(domain: str) -> dict:
-    """Fetch SSL certificate info — IPv4 first, 7s hard timeout."""
+    """Fetch SSL certificate info — IPv4 first, 4s hard timeout."""
+    domain = domain.lower()  # SNI is case-sensitive
     result = {"ok": False, "subject_cn": "", "subject_o": "", "issuer_cn": "", "issuer_o": "",
               "not_before": "", "not_after": "", "days": None, "error": ""}
 
@@ -135,6 +136,7 @@ def ssl_check(domain: str) -> dict:
 
 def http_check(domain: str) -> dict:
     """Check HTTP and HTTPS response — fast with short timeouts."""
+    domain = domain.lower()
     result = {"https": 0, "http": 0, "redirect": "", "error": ""}
     for proto, port, key in [("https", 443, "https"), ("http", 80, "http")]:
         ctx = ssl.create_default_context() if proto == "https" else None
