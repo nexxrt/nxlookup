@@ -253,16 +253,34 @@ def _ip_whois_raw(ip: str) -> str:
     return _socket_whois(ip, ip)
 
 def _domain_whois_socket(domain: str) -> str:
-    """Raw WHOIS for a domain — query IANA for TLD server, then query it."""
-    # Always use the actual TLD (last part) for IANA referral.
-    # IANA delegates per-TLD; the referral server handles SLDs like co.uk, com.ru, etc.
+    """Raw WHOIS for a domain — IANA referral with fallback for known servers."""
     tld = domain.lower().rstrip('.').split('.')[-1]
-    return _socket_whois(tld, domain)
+    result = _socket_whois(tld, domain)
+    # Fallback: some ccTLD referral servers don't handle third-level domains.
+    # Known servers that work better than IANA referrals:
+    _fallback = {
+        'ru': 'whois.nic.ru',
+    }
+    if ('No entries found' in result or 'No match for' in result) and tld in _fallback:
+        result = _socket_whois(_fallback[tld], domain, skip_iana=True)
+    return result
 
-def _socket_whois(iana_query: str, referral_query: str) -> str:
+def _socket_whois(iana_query: str, referral_query: str, skip_iana: bool = False) -> str:
     """Generic socket WHOIS with IANA referral.
-    Sends iana_query to whois.iana.org, follows referral, sends referral_query."""
+    Sends iana_query to whois.iana.org, follows referral, sends referral_query.
+    If skip_iana=True, iana_query is used directly as the WHOIS server host."""
     try:
+        if skip_iana:
+            s2 = socket.create_connection((iana_query, 43), timeout=10)
+            s2.sendall((referral_query + "\r\n").encode())
+            resp2 = b""
+            while True:
+                chunk = s2.recv(4096)
+                if not chunk: break
+                resp2 += chunk
+            s2.close()
+            return resp2.decode("utf-8", errors="replace")
+
         # Step 1: query IANA for the right whois server
         s = socket.create_connection(("whois.iana.org", 43), timeout=10)
         s.sendall((iana_query + "\r\n").encode())
