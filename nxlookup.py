@@ -269,12 +269,17 @@ def _domain_whois_socket(domain: str) -> str:
     tld = domain.lower().rstrip('.').split('.')[-1]
     result = _socket_whois(tld, domain)
     # Fallback: some ccTLD referral servers don't handle third-level domains.
-    # Known servers that work better than IANA referrals:
     _fallback = {
         'ru': 'whois.nic.ru',
     }
     if ('No entries found' in result or 'No match for' in result) and tld in _fallback:
         result = _socket_whois(_fallback[tld], domain, skip_iana=True)
+    # If still no data and domain has 3+ parts, try SLD only
+    if ('No entries found' in result or 'No match for' in result):
+        parts = domain.lower().rstrip('.').split('.')
+        if len(parts) >= 3:
+            sld = '.'.join(parts[-2:])
+            result = _socket_whois(tld, sld)
     return result
 
 def _socket_whois(iana_query: str, referral_query: str, skip_iana: bool = False) -> str:
